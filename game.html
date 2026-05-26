@@ -247,6 +247,7 @@
             }
 
             update() {
+                // [APPLICATION STAGE] Game logic: Update Y position of star based on its speed
                 this.y += this.speed;
                 if (this.y > canvas.height) {
                     this.y = 0;
@@ -255,9 +256,12 @@
             }
 
             draw() {
-                ctx.fillStyle = '#ffffff';
+                // [GEOMETRY STAGE] Create mathematical vector paths in 2D space
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+
+                // [RASTERIZATION STAGE] Fill the geometric path with solid colored pixels in the frame buffer
+                ctx.fillStyle = '#ffffff';
                 ctx.fill();
             }
         }
@@ -272,7 +276,7 @@
             }
 
             update() {
-                // Key movements
+                // [APPLICATION STAGE] Physics and movement calculations on CPU
                 if (keys['w'] || keys['W'] || keys['ArrowUp']) this.y -= this.speed;
                 if (keys['s'] || keys['S'] || keys['ArrowDown']) this.y += this.speed;
                 if (keys['a'] || keys['A'] || keys['ArrowLeft']) this.x -= this.speed;
@@ -292,12 +296,14 @@
             }
 
             draw() {
-                // Draw a simple glowing blue circle
+                // [GEOMETRY STAGE] Set up shape vertices and construct mathematical paths in viewport coordinate space
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                // [RASTERIZATION STAGE] Convert geometric vector paths into color and boundary stroke pixels on the grid screen
                 ctx.fillStyle = '#00eeee';
                 ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
             }
@@ -318,7 +324,7 @@
             }
 
             update() {
-                // DIFFICULTY INCREASE: move faster as score goes up
+                // [APPLICATION STAGE] Physics and difficulty scaling calculations
                 let speedMultiplier = 1 + (score / 1500);
                 this.y += this.speedY * speedMultiplier;
                 this.x += this.speedX * speedMultiplier;
@@ -335,10 +341,12 @@
             }
 
             draw() {
-                // Draw a yellow circle
-                ctx.fillStyle = '#ffff00';
+                // [GEOMETRY STAGE] Construct the circular path centered at (x, y) with given radius
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                // [RASTERIZATION STAGE] Paint pixels yellow on the output grid buffer
+                ctx.fillStyle = '#ffff00';
                 ctx.fill();
             }
         }
@@ -358,7 +366,7 @@
             }
 
             update() {
-                // DIFFICULTY INCREASE: speed up significantly as score goes up
+                // [APPLICATION STAGE] Collision limits check & dynamic movement velocity updates
                 let speedMultiplier = 1 + (score / 1000);
                 this.y += this.speedY * speedMultiplier;
                 this.x += this.speedX * speedMultiplier;
@@ -375,10 +383,12 @@
             }
 
             draw() {
-                // Draw a simple red circle
-                ctx.fillStyle = '#ff3366';
+                // [GEOMETRY STAGE] Setup circular hazard coordinates in vector space
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
+                // [RASTERIZATION STAGE] Convert primitive to crimson colored viewport pixels
+                ctx.fillStyle = '#ff3366';
                 ctx.fill();
             }
         }
@@ -483,22 +493,45 @@
             startGame();
         });
 
+        /*
+        ========================================================================
+        EXPLANATION OF THE GRAPHICS PIPELINE STAGES IN THIS CANVAS APPLICATION:
+        
+        1. THE APPLICATION STAGE:
+           - Occurs on the CPU.
+           - Handles keyboard and mouse event inputs, physics loops, updating scores,
+             collision checks (isColliding), and scheduling audio cues (playBeep).
+           
+        2. THE GEOMETRY STAGE:
+           - Translates game logic coordinate dimensions relative to screen boundaries.
+           - Defines structural shapes using geometric math commands such as
+             ctx.beginPath() and ctx.arc(x, y, radius, 0, Math.PI * 2).
+           
+        3. THE RASTERIZATION STAGE:
+           - Translates structural shape vectors into active screen grids of colored pixels.
+           - Triggered by rendering fill operations: ctx.fill(), ctx.stroke(), 
+             or ctx.fillRect().
+        ========================================================================
+        */
+
         // --- MAIN CANVAS GAME LOOP ---
         function loop() {
-            // Clear screen
+            // [RASTERIZATION STAGE] Fill the full canvas pixel buffer with background color
             ctx.fillStyle = '#0f0f1b';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // 1. Draw drifting stars in background
             for (let i = 0; i < stars.length; i++) {
+                // [APPLICATION STAGE] Run update movements
                 stars[i].update();
+                // [GEOMETRY & RASTERIZATION STAGE] Plot and color pixels
                 stars[i].draw();
             }
 
             if (gameState === 'PLAYING') {
                 // 2. Update and Draw Player
-                player.update();
-                player.draw();
+                player.update(); // [APPLICATION STAGE] CPU game state adjustments
+                player.draw();   // [GEOMETRY & RASTERIZATION STAGES] Render player core
 
                 // 3. Update, Draw and Check Collisions for Energy Cells
                 for (let i = 0; i < energyCells.length; i++) {
