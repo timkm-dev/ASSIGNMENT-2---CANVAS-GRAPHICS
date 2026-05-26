@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Canvas Arcade Game</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #1a1a2e;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Centered game canvas */
+        canvas {
+            display: block;
+            background-color: #0f0f1b;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Basic UI screens */
+        .overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(20, 20, 35, 0.9);
+            border: 2px solid #00eeee;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 32px;
+            color: #00eeee;
+            margin-bottom: 15px;
+        }
+
+        p {
+            font-size: 16px;
+            color: #cccccc;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .btn {
+            background-color: transparent;
+            border: 2px solid #00eeee;
+            color: #00eeee;
+            padding: 10px 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: 0.2s ease;
+        }
+
+        .btn:hover {
+            background-color: #00eeee;
+            color: #1a1a2e;
+        }
+
+        /* Instructions block */
+        .controls-info {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        .controls-info div {
+            margin-bottom: 5px;
+        }
+
+        /* Simple HUD overlay */
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .hud-panel {
+            background-color: rgba(15, 15, 27, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+
+        .health-bar-bg {
+            display: inline-block;
+            width: 100px;
+            height: 12px;
+            background-color: #444;
+            border-radius: 6px;
+            vertical-align: middle;
+            margin-left: 10px;
+            overflow: hidden;
+        }
+
+        .health-bar-fill {
+            width: 100%;
+            height: 100%;
+            background-color: #00eeee;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Simple HUD -->
+    <div id="hud" class="hidden">
+        <div class="hud-panel">
+            Shields: 
+            <div class="health-bar-bg">
+                <div id="shield-fill" class="health-bar-fill"></div>
+            </div>
+        </div>
+        <div class="hud-panel">
+            Score: <span id="score-text">0</span>
+        </div>
+    </div>
+
+    <!-- Start Menu -->
+    <div id="start-menu" class="overlay">
+        <h1>Neon Pilot</h1>
+        <p>Control your energy core. Absorb yellow energy cells to repair shields, and dodge the red hazard mines!</p>
+        
+        <div class="controls-info">
+            <div><strong>Controls:</strong> Mouse movements or WASD / Arrow keys</div>
+            <div><strong>Yellow Cells:</strong> Gain points & heal shield</div>
+            <div><strong>Red Mines:</strong> Deal damage to shield</div>
+        </div>
+        
+        <button id="start-btn" class="btn">Play Game</button>
+    </div>
+
+    <!-- Game Over Menu -->
+    <div id="game-over-menu" class="overlay hidden">
+        <h1 style="color: #ff3366; border-color: #ff3366;">Game Over</h1>
+        <p>Your shield integrity has been completely destroyed.</p>
+        <p style="font-size: 20px;">Final Score: <strong id="final-score" style="color: #00eeee;">0</strong></p>
+        <button id="restart-btn" class="btn" style="border-color: #ff3366; color: #ff3366;">Restart</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game States
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let score = 0;
+        let lives = 100; // Shield integrity percent
+
+        // Simple audio function (Written in a beginner-friendly way)
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playBeep(freq, type = 'sine', duration = 0.15) {
+            initAudio();
+            if (!audioCtx) return;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = type;
+            osc.frequency.value = freq;
+
+            // Simple volume envelope
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // Set Canvas dimensions to cover the browser window
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Control Inputs
+        const keys = {};
+        const mouse = { x: canvas.width / 2, y: canvas.height / 2, active: false };
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            mouse.active = false; // Keypress overrides mouse movement
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
+        });
+
+        // --- ENTITY CLASSES (Written in standard beginner OOP style) ---
+
+        // Background Star Object
+        class Star {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2;
+                this.speed = Math.random() * 1 + 0.5;
+            }
+
+            update() {
+                this.y += this.speed;
+                if (this.y > canvas.height) {
+                    this.y = 0;
+                    this.x = Math.random() * canvas.width;
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Player Core Object
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height * 0.8;
+                this.radius = 15;
+                this.speed = 6;
+            }
+
+            update() {
+                // Key movements
+                if (keys['w'] || keys['W'] || keys['ArrowUp']) this.y -= this.speed;
+                if (keys['s'] || keys['S'] || keys['ArrowDown']) this.y += this.speed;
+                if (keys['a'] || keys['A'] || keys['ArrowLeft']) this.x -= this.speed;
+                if (keys['d'] || keys['D'] || keys['ArrowRight']) this.x += this.speed;
+
+                // Mouse movements (only if mouse has moved)
+                if (mouse.active) {
+                    this.x += (mouse.x - this.x) * 0.1;
+                    this.y += (mouse.y - this.y) * 0.1;
+                }
+
+                // Prevent player from leaving canvas boundaries
+                if (this.x < this.radius) this.x = this.radius;
+                if (this.x > canvas.width - this.radius) this.x = canvas.width - this.radius;
+                if (this.y < this.radius) this.y = this.radius;
+                if (this.y > canvas.height - this.radius) this.y = canvas.height - this.radius;
+            }
+
+            draw() {
+                // Draw a simple glowing blue circle
+                ctx.fillStyle = '#00eeee';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+
+        // Energy Cell Object (Collectible)
+        class EnergyCell {
+            constructor() {
+                this.radius = 10;
+                this.spawn();
+            }
+
+            spawn() {
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = -20;
+                this.speedY = Math.random() * 2 + 1;
+                this.speedX = Math.random() * 2 - 1;
+            }
+
+            update() {
+                // DIFFICULTY INCREASE: move faster as score goes up
+                let speedMultiplier = 1 + (score / 1500);
+                this.y += this.speedY * speedMultiplier;
+                this.x += this.speedX * speedMultiplier;
+
+                // Bounce horizontally off canvas edges
+                if (this.x < this.radius || this.x > canvas.width - this.radius) {
+                    this.speedX = -this.speedX;
+                }
+
+                // Recycle if it goes past the bottom
+                if (this.y > canvas.height + this.radius) {
+                    this.spawn();
+                }
+            }
+
+            draw() {
+                // Draw a yellow circle
+                ctx.fillStyle = '#ffff00';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Void Mine Object (Obstacle)
+        class VoidMine {
+            constructor() {
+                this.radius = 12;
+                this.spawn();
+            }
+
+            spawn() {
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = -20;
+                this.speedY = Math.random() * 3 + 2;
+                this.speedX = Math.random() * 2 - 1;
+            }
+
+            update() {
+                // DIFFICULTY INCREASE: speed up significantly as score goes up
+                let speedMultiplier = 1 + (score / 1000);
+                this.y += this.speedY * speedMultiplier;
+                this.x += this.speedX * speedMultiplier;
+
+                // Bounce off edges
+                if (this.x < this.radius || this.x > canvas.width - this.radius) {
+                    this.speedX = -this.speedX;
+                }
+
+                // Recycle if it goes past the bottom
+                if (this.y > canvas.height + this.radius) {
+                    this.spawn();
+                }
+            }
+
+            draw() {
+                // Draw a simple red circle
+                ctx.fillStyle = '#ff3366';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Basic Particle Object for Explosions
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = Math.random() * 3 + 1;
+                this.vx = Math.random() * 4 - 2;
+                this.vy = Math.random() * 4 - 2;
+                this.alpha = 1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.02; // Fade out gradually
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Initialize Lists
+        const stars = [];
+        for (let i = 0; i < 40; i++) {
+            stars.push(new Star());
+        }
+
+        let player = new Player();
+        let energyCells = [];
+        let voidMines = [];
+        let particles = [];
+
+        // Spawn a burst of particles
+        function explode(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // Collision Check using basic Distance Formula
+        function isColliding(c1, c2) {
+            const dx = c1.x - c2.x;
+            const dy = c1.y - c2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < c1.radius + c2.radius;
+        }
+
+        // Start/Restart Actions
+        function startGame() {
+            initAudio(); // Warm up audio context on click
+            playBeep(330, 'triangle', 0.2); // Play start sound
+            setTimeout(() => playBeep(440, 'triangle', 0.25), 100);
+
+            gameState = 'PLAYING';
+            score = 0;
+            lives = 100;
+
+            player = new Player();
+            particles = [];
+            
+            // Spawn initial cells and mines
+            energyCells = [new EnergyCell(), new EnergyCell()];
+            voidMines = [new VoidMine(), new VoidMine(), new VoidMine()];
+
+            // Update UI Elements
+            document.getElementById('start-menu').classList.add('hidden');
+            document.getElementById('game-over-menu').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            
+            document.getElementById('score-text').innerText = score;
+            document.getElementById('shield-fill').style.width = lives + '%';
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            playBeep(120, 'sawtooth', 0.6); // Low descending death buzz
+
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over-menu').classList.remove('hidden');
+        }
+
+        // Button Event Listeners
+        document.getElementById('start-btn').addEventListener('click', () => {
+            initAudio();
+            startGame();
+        });
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            initAudio();
+            startGame();
+        });
+
+        // --- MAIN CANVAS GAME LOOP ---
+        function loop() {
+            // Clear screen
+            ctx.fillStyle = '#0f0f1b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Draw drifting stars in background
+            for (let i = 0; i < stars.length; i++) {
+                stars[i].update();
+                stars[i].draw();
+            }
+
+            if (gameState === 'PLAYING') {
+                // 2. Update and Draw Player
+                player.update();
+                player.draw();
+
+                // 3. Update, Draw and Check Collisions for Energy Cells
+                for (let i = 0; i < energyCells.length; i++) {
+                    const cell = energyCells[i];
+                    cell.update();
+                    cell.draw();
+
+                    if (isColliding(player, cell)) {
+                        score += 100;
+                        lives = Math.min(100, lives + 10); // Heal by 10%
+                        
+                        playBeep(600, 'sine', 0.12); // High crisp beep on collect
+                        explode(cell.x, cell.y, '#ffff00'); // Yellow explosion
+                        cell.spawn(); // Reset cell position
+
+                        document.getElementById('score-text').innerText = score;
+                        document.getElementById('shield-fill').style.width = lives + '%';
+                    }
+                }
+
+                // 4. Update, Draw and Check Collisions for Void Mines
+                for (let i = 0; i < voidMines.length; i++) {
+                    const mine = voidMines[i];
+                    mine.update();
+                    mine.draw();
+
+                    if (isColliding(player, mine)) {
+                        lives -= 20; // Take 20% damage
+                        
+                        playBeep(180, 'triangle', 0.2); // Low dull buzz on hit
+                        explode(mine.x, mine.y, '#ff3366'); // Red explosion
+                        mine.spawn(); // Reset mine position
+
+                        document.getElementById('shield-fill').style.width = lives + '%';
+
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    }
+                }
+
+                // Dynamic difficulty: slowly spawn more mines as score increases
+                if (score > 1000 && voidMines.length === 3) {
+                    voidMines.push(new VoidMine());
+                }
+                if (score > 2500 && voidMines.length === 4) {
+                    voidMines.push(new VoidMine());
+                }
+            }
+
+            // 5. Update and Draw active explosion particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+
+                // Remove dead particles
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        // Run the main game loop
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
